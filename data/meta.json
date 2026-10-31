@@ -1,0 +1,9 @@
+{
+ "snapshot": "2010-12-01",
+ "calibration": "2009-12-01 to 2010-11-30",
+ "holdout": "2010-12-01 to 2011-11-30",
+ "n_customers": 4239,
+ "new_customers_2011": 1585,
+ "train_snapshot": "2010-06-01",
+ "train_churn_rate": 0.2816691505216095
+}
