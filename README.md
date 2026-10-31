@@ -2,7 +2,7 @@
 
 A Streamlit app for two 90-minute sessions on segmentation, CLV and prediction using the
 UCI Online Retail II dataset. Students play the new Head of CRM with a £50k budget on 1 December 2010.
-Everything after that date is hidden until the Reveal tab.
+Everything after "today" (the snapshot) is hidden until the Reveal tab. The app avoids showing calendar years; the real period is Dec 2009 – Nov 2011.
 
 ## Run it
 
@@ -13,7 +13,7 @@ streamlit run app.py
 
 To deploy on Streamlit Community Cloud, push this folder to GitHub and point the app at `app.py`.
 Set the Reveal passcode in the app's **Secrets** as `REVEAL_CODE = "your-code"`.
-Without a secret, the passcode is `holdout2011`.
+Without a secret, the passcode is `reveal`.
 
 > The passcode keeps the Reveal closed during class. It is not security. If students can see the repository,
 > they can read `data/reveal.csv`. Share only the app link, not the repository.
@@ -27,7 +27,7 @@ Without a secret, the passcode is `holdout2011`.
 | ② Value | CLV and the CFO challenge | horizon, discount rate, revenue vs margin, saved scenarios |
 | ③ Predict | Read a churn model, pick a threshold | threshold, confusion matrix, lift by decile, drivers |
 | ④ Plan | Value × risk map and budget allocation | budget, 40% cut twist, cost per contact, save rate, margin, targeting rule, lock in plan |
-| 🔓 Reveal | What really happened in 2011 | passcode |
+| 🔓 Reveal | What really happened next | passcode |
 
 The sidebar has a **Show coaching hints** toggle. Hints flag common pitfalls as students work.
 Suggested use: on for undergraduates, off for MBAs.

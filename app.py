@@ -4,7 +4,7 @@ UCI Online Retail II — "You're the new Head of CRM. You have £50k. Who do you
 
 Run:  streamlit run app.py
 Data: precomputed files in ./data (built from the UCI Online Retail II dataset).
-Reveal passcode: set REVEAL_CODE in .streamlit/secrets.toml (default: holdout2011).
+Reveal passcode: set REVEAL_CODE in .streamlit/secrets.toml (default: reveal).
 """
 import json
 import numpy as np
@@ -109,8 +109,8 @@ with st.sidebar:
     st.caption(("✅" if ss.get("threshold_chosen") else "⬜") + " 3 · Risk threshold chosen")
     st.caption(("✅" if ss.plan is not None else "⬜") + " 4 · Plan locked in")
     st.divider()
-    st.caption(f"Data: UCI Online Retail II · {N:,} customers · snapshot taken {meta['snapshot']}. "
-               "Everything after that date is hidden until the Reveal.")
+    st.caption(f"Data: UCI Online Retail II · {N:,} customers. "
+               "Everything that happens after today is hidden until the Reveal.")
 
 
 def hint(msg):
@@ -126,18 +126,18 @@ with tabs[0]:
     c1, c2 = st.columns([3, 2], gap="large")
     with c1:
         st.markdown(f"""
-It is **1 December 2010**. You have just joined a UK online retailer that sells giftware and homeware,
+It is the start of December. You have just joined a UK online retailer that sells giftware and homeware,
 mostly to **small shops and wholesalers**, plus some consumers. Over the past year it served
 **{N:,} identifiable customers** who spent **{gbp(cust.monetary.sum())}**.
 
-The CEO has given you **£50,000** for retention and growth campaigns in 2011 and wants answers to three questions:
+The CEO has given you **£50,000** for retention and growth campaigns over the next 12 months and wants answers to three questions:
 
 1. **Who are our customers?** Build segments the business can act on.
 2. **What are they worth?** Estimate customer lifetime value and defend your assumptions.
 3. **Who should we spend the £50k on, and what return should we expect?**
 
 Work through the tabs in order. Each one feeds the next: your segments carry into the value and planning tabs,
-and the plan you lock in is scored against **what customers actually did in 2011** at the end of Session 2.
+and the plan you lock in is scored against **what customers actually did over the following 12 months** at the end of Session 2.
 """)
         st.markdown("#### How the sessions run")
         st.markdown("""
@@ -158,7 +158,7 @@ and the plan you lock in is scored against **what customers actually did in 2011
         b.metric("Revenue from top 10% of customers", pct(m.iloc[: N // 10].sum() / m.sum()))
         with st.expander("What's in the data?"):
             st.markdown("""
-Each row is one customer, summarising their purchases from **1 Dec 2009 to 30 Nov 2010**.
+Each row is one customer, summarising their purchases over the **last 12 months** (December to November).
 
 - Transactions without a customer ID (about 23% of rows) and cancellations have been removed;
   cancellations are kept only as a *return rate*.
@@ -375,7 +375,7 @@ with tabs[2]:
 with tabs[3]:
     st.header("③ Predict: who are we about to lose?")
     st.caption(f"A churn model scores every customer's risk of **placing no order in the next 6 months**. "
-               f"It was built on customers as they looked on {meta['train_snapshot']} and checked on customers it had not seen.")
+               "It was built on customers as they looked six months ago, and checked on customers it had not seen.")
 
     st.subheader("How good is the model?")
     st.caption(f"Checked on {len(val):,} held-out customers from the training period. "
@@ -416,7 +416,7 @@ with tabs[3]:
         st.plotly_chart(style(fig, 360), width="stretch")
         hint("These are associations, not levers. Customers with many orders are lower risk; that doesn't mean pushing extra orders onto someone will keep them.")
 
-    st.subheader("Today's customers (1 Dec 2010)")
+    st.subheader("Today's customers")
     p = cust.p_churn_6m
     a, b, c = st.columns(3)
     a.metric("Average risk score", pct(p.mean()))
@@ -528,52 +528,52 @@ with tabs[4]:
 
 # ============================================================================= REVEAL
 with tabs[5]:
-    st.header("🔓 Reveal: what actually happened in 2011")
+    st.header("🔓 Reveal: what actually happened next")
     code = st.text_input("Instructor passcode", type="password")
     try:
-        secret = st.secrets.get("REVEAL_CODE", "holdout2011")
+        secret = st.secrets.get("REVEAL_CODE", "reveal")
     except Exception:
-        secret = "holdout2011"
+        secret = "reveal"
     if code != secret:
         st.info("Locked until your instructor opens it at the end of Session 2.")
         st.stop()
 
     rv = load_reveal().loc[cust.index]
-    st.success(f"Showing actual behaviour from {meta['holdout']}.")
+    st.success("Showing what customers actually did over the 12 months after today.")
 
     st.subheader("1 · Your segments")
     if ss.seg is not None:
         t = pd.DataFrame({"seg": ss.seg, "pred": CLV_12M, "bought": rv.bought_next_12m, "rev": rv.revenue_next_12m}).groupby("seg").agg(
-            Customers=("pred", "size"), **{"Bought again in 2011": ("bought", "mean")}, **{"Predicted 12-month CLV (avg)": ("pred", "mean")},
-            **{"Actual 2011 revenue (avg)": ("rev", "mean")})
-        t["Prediction error"] = t["Predicted 12-month CLV (avg)"] / t["Actual 2011 revenue (avg)"] - 1
+            Customers=("pred", "size"), **{"Bought again (next 12 months)": ("bought", "mean")}, **{"Predicted 12-month CLV (avg)": ("pred", "mean")},
+            **{"Actual revenue, next 12 months (avg)": ("rev", "mean")})
+        t["Prediction error"] = t["Predicted 12-month CLV (avg)"] / t["Actual revenue, next 12 months (avg)"] - 1
         t.index = [f"{i} · {ss.seg_names.get(i, '')}" for i in t.index]
-        st.dataframe(t.style.format({"Bought again in 2011": "{:.0%}", "Predicted 12-month CLV (avg)": "£{:,.0f}", "Actual 2011 revenue (avg)": "£{:,.0f}",
+        st.dataframe(t.style.format({"Bought again (next 12 months)": "{:.0%}", "Predicted 12-month CLV (avg)": "£{:,.0f}", "Actual revenue, next 12 months (avg)": "£{:,.0f}",
                                      "Prediction error": "{:+.0%}"}), width="stretch")
     else:
         st.caption("No segments built in this browser session.")
 
     st.subheader("2 · The CLV model")
     a, b, c, d = st.columns(4)
-    a.metric("Predicted 2011 revenue", gbp(CLV_12M.sum()))
-    b.metric("Actual 2011 revenue", gbp(rv.revenue_next_12m.sum()), delta=f"{CLV_12M.sum() / rv.revenue_next_12m.sum() - 1:+.0%} over-predicted", delta_color="off")
+    a.metric("Predicted revenue, next 12 months", gbp(CLV_12M.sum()))
+    b.metric("Actual revenue, next 12 months", gbp(rv.revenue_next_12m.sum()), delta=f"{CLV_12M.sum() / rv.revenue_next_12m.sum() - 1:+.0%} over-predicted", delta_color="off")
     top10 = CLV_12M.rank(ascending=False, method="first") <= N / 10
     naive = cust.monetary.rank(ascending=False, method="first") <= N / 10
-    c.metric("2011 revenue from model's top 10%", pct(rv.revenue_next_12m[top10].sum() / rv.revenue_next_12m.sum()))
+    c.metric("Actual revenue from model's top 10%", pct(rv.revenue_next_12m[top10].sum() / rv.revenue_next_12m.sum()))
     d.metric("…from last year's top 10% spenders", pct(rv.revenue_next_12m[naive].sum() / rv.revenue_next_12m.sum()))
     band = pd.cut(cust.tenure_days, [-1, 90, 180, 270, 366], labels=["New (0–3 months)", "3–6 months", "6–9 months", "9–12 months"])
     tb = pd.DataFrame({"band": band, "Predicted": CLV_12M, "Actual": rv.revenue_next_12m}).groupby("band", observed=True)[["Predicted", "Actual"]].sum()
     fig = px.bar(tb.reset_index().melt(id_vars="band", var_name="", value_name="Revenue"), x="band", y="Revenue", color="", barmode="group",
-                 color_discrete_sequence=[PAL[5], PAL[0]], title="Predicted vs actual 2011 revenue, by how long the customer had been with us")
+                 color_discrete_sequence=[PAL[5], PAL[0]], title="Predicted vs actual revenue over the next 12 months, by how long the customer had been with us")
     fig.update_xaxes(title=None); fig.update_yaxes(tickprefix="£")
     st.plotly_chart(style(fig, 360), width="stretch")
-    st.caption(f"Plus **{meta['new_customers_2011']:,} brand-new customers** arrived in 2011. No CLV of the existing base includes them.")
+    st.caption(f"Plus **{meta['new_customers_2011']:,} brand-new customers** arrived during those 12 months. No CLV of the existing base includes them.")
 
     st.subheader("3 · The churn model")
     a, b, c = st.columns(3)
     a.metric("Average predicted risk", pct(cust.p_churn_6m.mean()))
-    b.metric("Actually lapsed (Dec 2010 – May 2011)", pct(rv.lapsed_next_6m.mean()))
-    c.metric("Ranking quality (AUC) on 2011", f"{roc_auc_score(rv.lapsed_next_6m, cust.p_churn_6m):.2f}")
+    b.metric("Actually lapsed (next 6 months)", pct(rv.lapsed_next_6m.mean()))
+    c.metric("Ranking quality (AUC) on actual outcomes", f"{roc_auc_score(rv.lapsed_next_6m, cust.p_churn_6m):.2f}")
     dd = pd.DataFrame({"p": cust.p_churn_6m, "y": rv.lapsed_next_6m})
     dd["Risk decile"] = pd.qcut(dd.p.rank(method="first"), 10, labels=range(1, 11)).astype(int)
     dec = dd.groupby("Risk decile").agg(Predicted=("p", "mean"), Actual=("y", "mean")).reset_index()
