@@ -148,14 +148,14 @@ and the plan you lock in is scored against **what customers actually did over th
 """)
     with c2:
         st.markdown("#### The customer base at a glance")
-        m = cust.monetary.sort_values(ascending=False)
         a, b = st.columns(2)
         a.metric("Customers", f"{N:,}")
         b.metric("Revenue (12 months)", gbp(cust.monetary.sum()))
         a.metric("Median spend per customer", gbp(cust.monetary.median()))
         b.metric("Mean spend per customer", gbp(cust.monetary.mean()))
         a.metric("Bought only once", pct((cust.frequency == 1).mean()))
-        b.metric("Revenue from top 10% of customers", pct(m.iloc[: N // 10].sum() / m.sum()))
+        b.metric("Customers outside the UK", f"{int(cust.international.sum()):,}")
+        # The top-10% revenue share is the gut-check answer: it is revealed in the Value tab, not here.
         with st.expander("What's in the data?"):
             st.markdown("""
 Each row is one customer, summarising their purchases over the **last 12 months** (December to November).
@@ -327,6 +327,9 @@ with tabs[2]:
         b.metric("Mean per customer", gbp(v.mean()))
         c.metric("Median per customer", gbp(v.median()))
         d.metric("Share held by top 10%", pct(s_.iloc[: N // 10].sum() / s_.sum()))
+        m_ = cust.monetary.sort_values(ascending=False)
+        st.info(f"**Check your gut:** last year the top 10% of customers brought in "
+                f"**{pct(m_.iloc[: N // 10].sum() / m_.sum())}** of revenue. Compare it with the share of future value above.")
         hint("Mean vs median: when they are far apart, a few very large customers are pulling the average up. Which number would you put in front of the CEO?")
 
         cc1, cc2 = st.columns(2)
