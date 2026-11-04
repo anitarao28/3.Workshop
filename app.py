@@ -94,6 +94,7 @@ ss.setdefault("seg_names", {})        # cluster id -> name
 ss.setdefault("seg_config", None)
 ss.setdefault("clv_scenarios", [])
 ss.setdefault("plan", None)
+ss.setdefault("prev_seg", None)       # previous segmentation, for the comparison table
 
 # ----------------------------------------------------------------------------- sidebar
 with st.sidebar:
@@ -175,10 +176,12 @@ with tabs[1]:
     with c1:
         chosen = st.multiselect("Variables to cluster on", list(VARS), default=["recency_days", "frequency", "monetary"],
                                 format_func=lambda v: VARS[v])
-        log_t = st.checkbox("Log-transform skewed variables", value=False,
-                            help="Applies log(1+x) to every non-binary variable.")
-        scale_t = st.checkbox("Standardise variables (z-scores)", value=False,
-                              help="Puts every variable on the same scale: mean 0, standard deviation 1.")
+        log_t = st.checkbox("Log-transform skewed variables", value=True,
+                            help="Applies log(1+x) to every non-binary variable, so a few very large customers don't dominate. "
+                                 "Untick it to see what happens without it.")
+        scale_t = st.checkbox("Standardise variables (z-scores)", value=True,
+                              help="Puts every variable on the same scale (mean 0, standard deviation 1), so £ don't outweigh days. "
+                                   "Untick it to see what happens without it.")
         k = st.slider("Number of segments (k)", 2, 8, 4)
         seed = st.number_input("Random seed", 0, 999, 42, help="k-means starts from random points. Try another seed: do your segments change?")
         run = st.button("Run k-means", type="primary", width="stretch", disabled=len(chosen) == 0)
@@ -216,9 +219,15 @@ with tabs[1]:
         return pd.DataFrame(rows)
 
     if run:
+        if ss.seg is not None:   # keep the previous run so teams can see where customers moved
+            ss.prev_seg, ss.prev_names, ss.prev_config = ss.seg, dict(ss.seg_names), ss.seg_config
         ss.seg = kmeans(tuple(chosen), log_t, scale_t, k, seed)
         ss.seg_config = dict(vars=list(chosen), log=log_t, scale=scale_t, k=k, seed=seed)
-        ss.seg_names = {i: ss.seg_names.get(i, f"Segment {i}") for i in range(1, k + 1)} if len(ss.seg_names) == k else {i: f"Segment {i}" for i in range(1, k + 1)}
+        same = ss.prev_config is not None and all(ss.prev_config[x] == ss.seg_config[x] for x in ("vars", "log", "scale", "k")) \
+            if ss.get("prev_seg") is not None else False
+        # keep names only when the segments themselves didn't change (same variables, preparation and k)
+        ss.seg_names = {i: ss.seg_names.get(i, f"Segment {i}") for i in range(1, k + 1)} if same else {i: f"Segment {i}" for i in range(1, k + 1)}
+        ss.seg_actions = {} if not same else ss.get("seg_actions", {})
 
     with c2:
         if ss.seg is None:
@@ -250,6 +259,21 @@ with tabs[1]:
                 if c_.startswith("Median"):
                     fmt[c_] = "£{:,.0f}" if ("monetary" in c_ or "order value" in c_) else "{:,.1f}"
             st.dataframe(prof.style.format(fmt), width="stretch")
+
+            # where did customers move since the previous run?
+            if ss.get("prev_seg") is not None:
+                pc = ss.prev_config
+                def _desc(cfg):
+                    v = ", ".join(VARS[x].split(" (")[0] for x in cfg["vars"])
+                    prep_ = " + ".join([w for w, on in (("log", cfg["log"]), ("standardised", cfg["scale"])) if on]) or "raw"
+                    return f"{v} · {prep_} · k = {cfg['k']}"
+                with st.expander("Compare with your previous run: where did customers move?", expanded=True):
+                    st.caption(f"**Previous run:** {_desc(pc)}  \n**This run:** {_desc(cfg)}  \n"
+                               "Each row is a segment from your previous run. Read across to see which of this run's segments its customers are in now.")
+                    xt = pd.crosstab(ss.prev_seg.map(lambda i: f"{i} · {ss.prev_names.get(i, f'Segment {i}')}"),
+                                     seg.map(lambda i: f"{i} · {ss.seg_names.get(i, f'Segment {i}')}"))
+                    xt.index.name, xt.columns.name = "Previous run", "This run"
+                    st.dataframe(xt, width="stretch")
 
             # automatic flags
             shares = seg.value_counts(normalize=True)
