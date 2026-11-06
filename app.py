@@ -339,6 +339,7 @@ with tabs[2]:
         disc = st.slider("Annual discount rate", 0, 20, 0, format="%d%%") / 100
         basis = st.radio("Measure value as", ["Revenue", "Gross margin"], horizontal=True)
         margin = st.slider("Gross margin", 10, 60, 30, format="%d%%", disabled=basis == "Revenue") / 100 if basis == "Gross margin" else 1.0
+        st.caption("Optional: horizon, discount and margin move the total. Do they change *who* is most valuable? Save scenarios to compare.")
         v = clv(horizon, disc, margin)
         label = f"{horizon}-yr {basis.lower()}" + (f" @ {int(margin * 100)}%" if basis == "Gross margin" else "") + f", {int(disc * 100)}% discount"
         if st.button("Save this scenario", width="stretch"):
@@ -373,14 +374,57 @@ with tabs[2]:
                              color_discrete_sequence=PAL, title="CLV by segment (log scale)")
                 fig.update_layout(showlegend=False); fig.update_xaxes(title=None); fig.update_yaxes(title="CLV (£)")
                 st.plotly_chart(style(fig, 340), width="stretch")
+        # ---- Same spend, different value: median CLV by last year's spend and days since last order
+        st.markdown("#### Same spend, different value")
+        st.caption("Median CLV for customers who spent a similar amount last year (rows), by how long ago they last ordered (columns). "
+                   "Blank cells have fewer than 10 customers.")
+        sb = pd.cut(cust.monetary, [-np.inf, 500, 1500, 5000, np.inf], right=False,
+                    labels=["Under £500", "£500–1,500", "£1,500–5,000", "Over £5,000"])
+        rb = pd.cut(cust.recency_days, [-1, 30, 90, 180, np.inf],
+                    labels=["Last order 0–30 days ago", "31–90 days", "91–180 days", "Over 180 days"])
+        gg = pd.DataFrame({"v": v, "Spend last year": sb, "rb": rb})
+        med_ = gg.pivot_table(index="Spend last year", columns="rb", values="v", aggfunc="median", observed=False)
+        cnt_ = gg.pivot_table(index="Spend last year", columns="rb", values="v", aggfunc="size", observed=False)
+        med_ = med_.where(cnt_ >= 10)
+        med_.columns = [str(c_) for c_ in med_.columns]          # plain labels (categoricals don't display well)
+        med_.index = pd.Index([str(i_) for i_ in med_.index], name="Spend last year")
+        st.dataframe(med_.style.format(lambda x: "" if pd.isna(x) else f"£{x:,.0f}"), width="stretch")
+        hint("Read along a row: these customers spent about the same last year. Why would the model value them so differently?")
+
         if ss.seg is not None:
-            t = pd.DataFrame({"CLV": v, "seg": ss.seg}).groupby("seg").CLV.agg(["size", "mean", "median", "sum"])
-            t["share"] = t["sum"] / t["sum"].sum()
+            st.markdown("#### Value by segment")
+            dd = pd.DataFrame({"CLV": v, "seg": ss.seg, "spend": cust.monetary, "tenure": cust.tenure_days})
+            t = dd.groupby("seg").agg(**{"Customers": ("CLV", "size"), "Median spend last year": ("spend", "median"),
+                                         "Median days as customer": ("tenure", "median"), "Median CLV": ("CLV", "median"),
+                                         "Mean CLV": ("CLV", "mean"), "Total CLV": ("CLV", "sum")})
+            t["Share of total CLV"] = t["Total CLV"] / t["Total CLV"].sum()
             t.index = [f"{i} · {ss.seg_names.get(i, '')}" for i in t.index]
-            t.columns = ["Customers", "Mean CLV", "Median CLV", "Total CLV", "Share of total CLV"]
-            st.dataframe(t.style.format({"Mean CLV": "£{:,.0f}", "Median CLV": "£{:,.0f}", "Total CLV": "£{:,.0f}", "Share of total CLV": "{:.1%}"}),
+            st.dataframe(t.style.format({"Median spend last year": "£{:,.0f}", "Median days as customer": "{:,.0f}", "Mean CLV": "£{:,.0f}",
+                                         "Median CLV": "£{:,.0f}", "Total CLV": "£{:,.0f}", "Share of total CLV": "{:.1%}"}),
                          width="stretch")
             hint("Look at the spread inside each segment, not just the middle. Are some customers in a 'low' segment worth more than some in a 'high' one?")
+
+    # ---- CLV vs last year's spend: does the model change who we call our best customers?
+    with st.expander("CLV vs last year's spend: is the model worth it?", expanded=False):
+        top_n = N // 10
+        by_clv = set(v.nlargest(top_n).index)
+        by_spend = set(cust.monetary.nlargest(top_n).index)
+        st.metric(f"Customers in both top-10% lists ({top_n:,} each)", f"{len(by_clv & by_spend):,} ({len(by_clv & by_spend) / top_n:.0%})")
+        rows = []
+        for label, ids in (("In both lists", by_clv & by_spend), ("CLV top 10% only (the model adds)", by_clv - by_spend),
+                           ("Spend top 10% only (the model drops)", by_spend - by_clv)):
+            ids = list(ids)
+            r = {"Group": label, "Customers": len(ids), "Median spend last year": cust.monetary.loc[ids].median(),
+                 "Median days since last order": cust.recency_days.loc[ids].median(),
+                 "Median days as customer": cust.tenure_days.loc[ids].median(), "Median CLV": v.loc[ids].median()}
+            if ss.seg is not None and ids:
+                vc = ss.seg.loc[ids].map(lambda i: ss.seg_names.get(i, f"Segment {i}")).value_counts()
+                r["Mostly from"] = ", ".join(f"{k} ({n})" for k, n in vc.head(2).items())
+            rows.append(r)
+        cmp_ = pd.DataFrame(rows).set_index("Group")
+        st.dataframe(cmp_.style.format({"Median spend last year": "£{:,.0f}", "Median CLV": "£{:,.0f}",
+                                        "Median days since last order": "{:,.0f}", "Median days as customer": "{:,.0f}"}), width="stretch")
+        hint("Who does the model add, and who does it drop? Would you trust it on customers it has only known for a couple of months?")
 
     if ss.clv_scenarios:
         st.subheader("Your saved scenarios")
